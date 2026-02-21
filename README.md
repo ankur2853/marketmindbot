@@ -1,26 +1,46 @@
-# MarketMindBot 🤖📈
+# MarketMindBot Pro 🤖📈
 
-**MarketMindBot** is an intelligent Telegram bot powered by Google Gemini AI that provides real-time stock market insights and professional trading signals for both Indian and US stocks.
+**MarketMindBot Pro** is an intelligent Telegram bot powered by Google Gemini AI that provides real-time stock market insights, technical analysis, and professional trading signals for both Indian (NSE/BSE) and US (NASDAQ/NYSE) stocks.
 
-Just type any company name or ticker symbol, and the bot will automatically detect the market, fetch live data, and generate an AI-powered analysis block.
+Just type any company name or ticker symbol, and the bot will automatically identify the stock, compute 7 advanced technical indicators based on historical data, and ask Google Gemini AI to analyze the data to provide an accurate `BUY`, `HOLD`, or `SELL` signal.
 
 ## ✨ Features
 
-- **Smart Stock Identification**: Automatically detects if a stock belongs to the Indian (NSE/BSE) or US (NASDAQ/NYSE) market using Gemini AI.
-- **Real-Time Data**: Fetches live stock data including current price, previous close, daily high/low, volume, and percentage changes.
+- **Smart Stock Identification**: Automatically detects if a stock belongs to the Indian or US market using Gemini AI.
+- **Real-Time & Historical Data**: Fetches 3 months of historical data to compute daily technical trends. 
   - *Indian Stocks*: via Yahoo Finance endpoints
   - *US Stocks*: via Alpha Vantage API
-- **AI Trading Signals**: Uses Google's **Gemini 2.5 Flash** model to generate rapid, professional trading signals (BUY 🟢 / SELL 🔴 / HOLD ⚪).
-- **Comprehensive Analysis**: Provides a confidence level, risk assessment, target price prediction, and a short logical reasoning block.
+- **Advanced Technical Analysis**: Computes the following 7 indicators automatically:
+  1. **RSI (Relative Strength Index)**
+  2. **MACD (Moving Average Convergence Divergence)**
+  3. **20-Day SMA (Simple Moving Average)**
+  4. **50-Day SMA**
+  5. **Bollinger Bands**
+  6. **Volume Trend Analysis**
+  7. **Price Action Change**
+- **AI Trading Signals**: Uses Google's **Gemini 2.5 Flash** model to generate rapid, professional trading signals (BUY 🟢 / SELL 🔴 / HOLD ⚪) only when 4 or more indicators reach a strong consensus.
+- **Detailed Intelligence summary**: Provides a confidence level, risk assessment, stop-loss recommendation, short-term target price, and a short logical reasoning block justifying its bias. 
 
-## 🛠️ Tech Stack
+## 🛠️ Project Structure
 
-- **Node.js**
-- [node-telegram-bot-api](https://github.com/yagop/node-telegram-bot-api) for Telegram interactions.
-- [@google/generative-ai](https://www.npmjs.com/package/@google/generative-ai) for AI insights.
-- [axios](https://www.npmjs.com/package/axios) for API requests.
-- [dotenv](https://www.npmjs.com/package/dotenv) for environment variables.
-- [yahoo-finance2](https://www.npmjs.com/package/yahoo-finance2) (used in dependencies)
+The bot has been elegantly refactored into a scalable modular structure:
+
+```text
+/
+├── src/
+│   ├── index.js                  # Application entry point
+│   ├── config/
+│   │   └── env.js                # Centralized environment variable validation
+│   ├── api/
+│   │   ├── yahoo.js              # Fetching logic for Indian Stocks 
+│   │   └── alphavantage.js       # Fetching logic for US Stocks 
+│   ├── services/
+│   │   ├── gemini.js             # Interaction with Google Gemini AI API
+│   │   └── indicators.js         # Technical indicator math and consensus building
+│   └── bot/
+│       ├── instance.js           # Telegram bot instance initialization
+│       └── handlers.js           # Telegram message routing and command logic
+```
 
 ## 🚀 Getting Started
 
@@ -53,11 +73,17 @@ Ensure you have [Node.js](https://nodejs.org/) installed on your machine. You wi
 Start the bot by running:
 
 ```bash
-node bot.js
+npm start
+```
+
+Or run via node:
+
+```bash
+node src/index.js
 ```
 
 You should see an output indicating the bot is up and running:
-> `🤖 MarketMindBot with Gemini AI is running...`
+> `🤖 MarketMindBot Pro with Gemini AI + Technical Analysis is running...`
 
 ## 🎯 Usage
 
@@ -67,10 +93,10 @@ You should see an output indicating the bot is up and running:
    - `Apple` or `AAPL`
    - `Reliance` or `RELIANCE.NS`
    - `Tesla` or `TSLA`
-   - `Adani Power`
+   - `HDFCBANK`
 
-The bot will process your input, determine the market context, and reply with a complete AI analysis of the stock!
+The bot will ping the APIs to get the live data and historical closing prices, compute the indicators, ask Gemini for the final verdict, and format a beautiful report on whether to buy, sell, or hold.
 
 ## ⚠️ Disclaimer
 
-*MarketMindBot provides purely AI-generated analyses based on real-time data inputs. These analyses **do not constitute financial advice**. Always do your own research or consult a certified financial advisor before making any investment decisions.*
+*MarketMindBot Pro provides purely AI-generated analyses based on real-time data inputs and common technical formulas. These analyses **do not constitute financial advice**. Always do your own research or consult a certified financial advisor before making any investment decisions.*
