@@ -17,6 +17,33 @@ const bot = new TelegramBot(process.env.TELEGRAM_TOKEN, { polling: true });
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
 
+// ─── Ask Gemini to Identify Stock ────────────────────────────
+async function identifyStock(input) {
+    const prompt = `
+You are a stock market expert. The user typed: "${input}"
+
+Identify if this is an Indian stock or a US stock and return the correct ticker symbol.
+
+Reply in this EXACT format only, nothing else:
+MARKET: [INDIA/US]
+SYMBOL: [exact ticker symbol]
+NAME: [full company name]
+
+Rules:
+- For Indian stocks, use NSE symbol (e.g. RELIANCE, TCS, ADANIPOWER, HDFCBANK)
+- For US stocks, use NASDAQ/NYSE symbol (e.g. AAPL, TSLA, GOOGL, MSFT)
+- If you cannot identify, reply with MARKET: UNKNOWN
+`;
+    const result = await model.generateContent(prompt);
+    const text = result.response.text().trim();
+
+    const market = text.match(/MARKET:\s*(\w+)/i)?.[1]?.toUpperCase() || 'UNKNOWN';
+    const symbol = text.match(/SYMBOL:\s*(\S+)/i)?.[1]?.toUpperCase().replace(/[^A-Z0-9.&]/g, '') || '';
+    const name = text.match(/NAME:\s*(.+)/i)?.[1]?.trim() || input;
+
+    return { market, symbol, name };
+}
+
 // ─── Fetch Indian Stock (NSE/BSE) ─────────────────────────────
 async function fetchIndianStock(symbol) {
     const formats = [`${symbol}.NS`, `${symbol}.BO`];
@@ -46,7 +73,7 @@ async function fetchIndianStock(symbol) {
         }
     }
 
-    throw new Error('Symbol not found in NSE or BSE');
+    throw new Error('Symbol not found');
 }
 
 // ─── Fetch US Stock (Alpha Vantage) ───────────────────────────
@@ -71,30 +98,15 @@ async function fetchUSStock(symbol) {
     return { price, prevClose, high, low, volume, change, currency: '$' };
 }
 
-// ─── Ask Gemini for Correct NSE Symbol ───────────────────────
-async function getCorrectSymbol(companyName) {
-    const prompt = `
-What is the exact NSE (National Stock Exchange India) ticker symbol for "${companyName}"?
-Reply with ONLY the symbol, nothing else. No explanation. No punctuation. Just the symbol in uppercase.
-Example: if asked for "Reliance Industries" reply with: RELIANCE
-Example: if asked for "Adani Power" reply with: ADANIPOWER
-Example: if asked for "Tata Motors" reply with: TATAMOTORS
-If you are not sure, reply with: UNKNOWN
-`;
-    const result = await model.generateContent(prompt);
-    const symbol = result.response.text().trim().replace(/[^A-Z0-9&]/g, '');
-    return symbol;
-}
-
 // ─── Ask Gemini for Trade Signal ─────────────────────────────
-async function getAISignal(symbol, stockData, market) {
+async function getAISignal(symbol, companyName, stockData, market) {
     const { price, prevClose, high, low, volume, change, currency } = stockData;
 
     const prompt = `
 You are an expert stock market analyst specializing in ${market} stocks.
 Analyze the following real-time stock data and give a professional trading signal.
 
-Stock: ${symbol}
+Company: ${companyName} (${symbol})
 Market: ${market}
 Current Price: ${currency}${price}
 Previous Close: ${currency}${prevClose}
@@ -122,14 +134,13 @@ TARGET: [${currency}price]
     return result.response.text();
 }
 
-// ─── Parse Gemini Response ────────────────────────────────────
+// ─── Parse Gemini Signal Response ────────────────────────────
 function parseAIResponse(text) {
     const signal = text.match(/SIGNAL:\s*(\w+)/i)?.[1]?.toUpperCase() || 'HOLD';
     const confidence = text.match(/CONFIDENCE:\s*(\w+)/i)?.[1] || 'Low';
     const reason = text.match(/REASON:\s*(.+)/i)?.[1]?.trim() || 'No reason provided';
     const risk = text.match(/RISK:\s*(\w+)/i)?.[1] || 'Medium';
     const target = text.match(/TARGET:\s*(.+)/i)?.[1]?.trim() || 'N/A';
-
     const emoji = signal === 'BUY' ? '🟢' : signal === 'SELL' ? '🔴' : '⚪';
 
     return { signal, confidence, reason, risk, target, emoji };
@@ -140,168 +151,93 @@ bot.onText(/\/start/, (msg) => {
     bot.sendMessage(msg.chat.id,
         `👋 Welcome to *MarketMindBot!* 🤖\n\n` +
         `🧠 Powered by *Google Gemini AI*\n\n` +
-        `📌 *Commands:*\n` +
-        `🇮🇳 /trade [symbol] — Indian Stock (NSE/BSE)\n` +
-        `🇺🇸 /us [symbol] — US Stock (NASDAQ/NYSE)\n` +
-        `ℹ️ /help — Show examples\n\n` +
-        `📊 *Examples:*\n` +
-        `/trade RELIANCE\n` +
-        `/trade ADANIPOWER\n` +
-        `/trade HDFCBANK\n` +
-        `/us AAPL\n` +
-        `/us TSLA`,
+        `Just type any *company name or symbol* and I will automatically detect if it's Indian or US stock and give you an AI trading signal!\n\n` +
+        `📊 *Examples — just type:*\n` +
+        `• Reliance\n` +
+        `• Adani Power\n` +
+        `• TCS\n` +
+        `• HDFCBANK\n` +
+        `• Apple\n` +
+        `• Tesla\n` +
+        `• Google\n\n` +
+        `_⚠️ Disclaimer: This is AI analysis only, not financial advice._`,
         { parse_mode: 'Markdown' }
     );
 });
 
-// ─── /help ────────────────────────────────────────────────────
-bot.onText(/\/help/, (msg) => {
-    bot.sendMessage(msg.chat.id,
-        `ℹ️ *MarketMindBot Help*\n\n` +
-        `🇮🇳 *Indian Stocks (NSE/BSE):*\n` +
-        `/trade RELIANCE\n` +
-        `/trade TCS\n` +
-        `/trade INFY\n` +
-        `/trade HDFCBANK\n` +
-        `/trade WIPRO\n` +
-        `/trade ADANIPOWER\n` +
-        `/trade TATAMOTORS\n` +
-        `/trade SBIN\n\n` +
-        `🇺🇸 *US Stocks:*\n` +
-        `/us AAPL\n` +
-        `/us TSLA\n` +
-        `/us GOOGL\n` +
-        `/us MSFT\n` +
-        `/us AMZN\n\n` +
-        `💡 *Tip:* You can also type company name and Gemini will find the symbol automatically!\n` +
-        `Example: /trade Adani Power`,
-        { parse_mode: 'Markdown' }
-    );
-});
-
-// ─── /trade - Indian Stocks ───────────────────────────────────
-bot.onText(/\/trade (.+)/, async (msg, match) => {
+// ─── Handle All Messages ──────────────────────────────────────
+bot.on('message', async (msg) => {
     const chatId = msg.chat.id;
-    let company = match[1].trim().toUpperCase();
+    const text = msg.text?.trim();
+
+    // Ignore commands
+    if (!text || text.startsWith('/')) return;
 
     try {
         await bot.sendMessage(chatId,
-            `🔍 Analyzing *${company}* with Gemini AI... please wait ⏳`,
+            `🧠 Asking Gemini to identify *${text}*... please wait ⏳`,
             { parse_mode: 'Markdown' }
         );
 
-        let stockData;
+        // Step 1: Gemini identifies the stock
+        const { market, symbol, name } = await identifyStock(text);
 
-        try {
-            stockData = await fetchIndianStock(company);
-        } catch (err) {
-            // If direct fetch fails, ask Gemini for correct symbol
+        if (market === 'UNKNOWN' || !symbol) {
             await bot.sendMessage(chatId,
-                `🧠 Asking Gemini to find correct NSE symbol for *${company}*...`,
+                `❌ Could not identify *${text}* as a stock.\n\n` +
+                `Try typing:\n` +
+                `• Reliance\n` +
+                `• Adani Power\n` +
+                `• Apple\n` +
+                `• Tesla`,
                 { parse_mode: 'Markdown' }
             );
-
-            const correctedSymbol = await getCorrectSymbol(company);
-
-            if (!correctedSymbol || correctedSymbol === 'UNKNOWN') {
-                throw new Error('Gemini could not identify the stock symbol');
-            }
-
-            await bot.sendMessage(chatId,
-                `✅ Found symbol: *${correctedSymbol}* — fetching live data...`,
-                { parse_mode: 'Markdown' }
-            );
-
-            company = correctedSymbol;
-            stockData = await fetchIndianStock(company);
+            return;
         }
 
-        const aiResponse = await getAISignal(company, stockData, 'Indian NSE/BSE');
-        const { signal, confidence, reason, risk, target, emoji } = parseAIResponse(aiResponse);
+        const marketFlag = market === 'INDIA' ? '🇮🇳' : '🇺🇸';
+        const marketName = market === 'INDIA' ? 'NSE/BSE' : 'NASDAQ/NYSE';
 
         await bot.sendMessage(chatId,
-            `📊 *${company} (NSE/BSE)*\n\n` +
-            `💰 Price: ₹${stockData.price}\n` +
+            `${marketFlag} Found: *${name}* (${symbol}) on ${marketName}\n🔍 Fetching live data...`,
+            { parse_mode: 'Markdown' }
+        );
+
+        // Step 2: Fetch stock data
+        let stockData;
+        if (market === 'INDIA') {
+            stockData = await fetchIndianStock(symbol);
+        } else {
+            stockData = await fetchUSStock(symbol);
+        }
+
+        // Step 3: Get AI signal
+        const aiResponse = await getAISignal(symbol, name, stockData, marketName);
+        const { signal, confidence, reason, risk, target, emoji } = parseAIResponse(aiResponse);
+
+        // Step 4: Send result
+        await bot.sendMessage(chatId,
+            `📊 *${name} (${symbol})*\n` +
+            `${marketFlag} Market: ${marketName}\n\n` +
+            `💰 Price: ${stockData.currency}${stockData.price}\n` +
             `📈 Change: ${stockData.change.toFixed(2)}%\n` +
-            `🔺 High: ₹${stockData.high}   🔻 Low: ₹${stockData.low}\n` +
+            `🔺 High: ${stockData.currency}${stockData.high}   🔻 Low: ${stockData.currency}${stockData.low}\n` +
             `📦 Volume: ${stockData.volume.toLocaleString()}\n\n` +
             `━━━━━━━━━━━━━━━\n` +
             `🤖 *AI Signal: ${emoji} ${signal}*\n` +
             `🎯 Confidence: ${confidence}\n` +
             `⚠️ Risk Level: ${risk}\n` +
-            `🎯 Target Price: ${target}\n` +
+            `🎪 Target Price: ${target}\n` +
             `💡 Reason: ${reason}\n\n` +
             `_⚠️ Disclaimer: This is AI analysis only, not financial advice._`,
             { parse_mode: 'Markdown' }
         );
 
     } catch (err) {
-        console.error(`[Indian Stock Error] ${company}:`, err.message);
+        console.error(`[Error] ${text}:`, err.message);
         await bot.sendMessage(chatId,
-            `❌ Could not fetch data for *${company}*.\n\n` +
-            `Try these valid symbols:\n` +
-            `• /trade RELIANCE\n` +
-            `• /trade ADANIPOWER\n` +
-            `• /trade TATAMOTORS\n` +
-            `• /trade HDFCBANK\n\n` +
-            `Or type /help for more examples.`,
+            `❌ Something went wrong while fetching data for *${text}*.\n\nPlease try again or use the exact symbol.`,
             { parse_mode: 'Markdown' }
-        );
-    }
-});
-
-// ─── /us - US Stocks ──────────────────────────────────────────
-bot.onText(/\/us (.+)/, async (msg, match) => {
-    const chatId = msg.chat.id;
-    const company = match[1].trim().toUpperCase();
-
-    try {
-        await bot.sendMessage(chatId,
-            `🔍 Analyzing *${company}* with Gemini AI... please wait ⏳`,
-            { parse_mode: 'Markdown' }
-        );
-
-        const stockData = await fetchUSStock(company);
-        const aiResponse = await getAISignal(company, stockData, 'US NASDAQ/NYSE');
-        const { signal, confidence, reason, risk, target, emoji } = parseAIResponse(aiResponse);
-
-        await bot.sendMessage(chatId,
-            `📊 *${company} (NASDAQ/NYSE)*\n\n` +
-            `💰 Price: $${stockData.price}\n` +
-            `📈 Change: ${stockData.change.toFixed(2)}%\n` +
-            `🔺 High: $${stockData.high}   🔻 Low: $${stockData.low}\n` +
-            `📦 Volume: ${stockData.volume.toLocaleString()}\n\n` +
-            `━━━━━━━━━━━━━━━\n` +
-            `🤖 *AI Signal: ${emoji} ${signal}*\n` +
-            `🎯 Confidence: ${confidence}\n` +
-            `⚠️ Risk Level: ${risk}\n` +
-            `🎯 Target Price: ${target}\n` +
-            `💡 Reason: ${reason}\n\n` +
-            `_⚠️ Disclaimer: This is AI analysis only, not financial advice._`,
-            { parse_mode: 'Markdown' }
-        );
-
-    } catch (err) {
-        console.error(`[US Stock Error] ${company}:`, err.message);
-        await bot.sendMessage(chatId,
-            `❌ Could not fetch data for *${company}*.\n\n` +
-            `Try these valid symbols:\n` +
-            `• /us AAPL\n` +
-            `• /us TSLA\n` +
-            `• /us GOOGL\n` +
-            `• /us MSFT\n\n` +
-            `Or type /help for more examples.`,
-            { parse_mode: 'Markdown' }
-        );
-    }
-});
-
-// ─── Unknown Commands ─────────────────────────────────────────
-bot.onText(/\/(.+)/, (msg, match) => {
-    const command = match[1].split(' ')[0];
-    if (!['start', 'help', 'trade', 'us'].includes(command)) {
-        bot.sendMessage(msg.chat.id,
-            `❓ Unknown command. Type /start or /help to see available commands.`
         );
     }
 });
