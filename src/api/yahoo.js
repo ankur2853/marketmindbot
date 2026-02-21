@@ -1,8 +1,6 @@
+'use strict';
 const axios = require('axios');
-
-// ════════════════════════════════════════════════════════════
-//  FETCH INDIAN STOCK (Yahoo Finance — 3 months of history)
-// ════════════════════════════════════════════════════════════
+const { buildOHLCVFromYahoo } = require('../services/tradingEngine');
 
 async function fetchIndianStock(symbol) {
     const formats = [`${symbol}.NS`, `${symbol}.BO`];
@@ -15,31 +13,19 @@ async function fetchIndianStock(symbol) {
                 timeout: 12000
             });
 
-            const result = response.data.chart.result[0];
-            if (!result) continue;
+            const chartResult = response.data.chart.result?.[0];
+            if (!chartResult) continue;
 
-            const meta = result.meta;
-            const timestamps = result.timestamp || [];
-            const ohlcv = result.indicators?.quote?.[0] || {};
+            const rawData = buildOHLCVFromYahoo(chartResult, symbol);
+            rawData.currency = '₹';
+            rawData.currentPrice = chartResult.meta.regularMarketPrice;
+            rawData.prevClose = chartResult.meta.chartPreviousClose;
+            rawData.high = chartResult.meta.regularMarketDayHigh;
+            rawData.low = chartResult.meta.regularMarketDayLow;
+            rawData.volume = chartResult.meta.regularMarketVolume;
+            rawData.change = ((rawData.currentPrice - rawData.prevClose) / rawData.prevClose) * 100;
 
-            const closes = (ohlcv.close || []).filter(Boolean);
-            const highs = (ohlcv.high || []).filter(Boolean);
-            const lows = (ohlcv.low || []).filter(Boolean);
-            const volumes = (ohlcv.volume || []).filter(Boolean);
-
-            if (closes.length < 20) continue; // Need enough data
-
-            const price = meta.regularMarketPrice;
-            const prevClose = meta.chartPreviousClose;
-            const high = meta.regularMarketDayHigh;
-            const low = meta.regularMarketDayLow;
-            const volume = meta.regularMarketVolume;
-            const change = ((price - prevClose) / prevClose) * 100;
-
-            return {
-                price, prevClose, high, low, volume, change, currency: '₹',
-                closes, volumes, highs, lows
-            };
+            return rawData;
         } catch (e) {
             continue;
         }

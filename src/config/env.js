@@ -13,8 +13,9 @@ function validateEnv() {
         process.exit(1);
     }
 
-    if (!process.env.ALPHA_KEY) {
-        console.warn('⚠️ ALPHA_KEY missing in .env. US Stock data might fail.');
+    if (!process.env.TWELVE_KEY) {
+        console.warn('⚠️  TWELVE_KEY missing in .env — US stocks and Forex will not work');
+        console.warn('   Get a free key at: https://twelvedata.com/register');
     }
 }
 
@@ -23,5 +24,5 @@ validateEnv();
 module.exports = {
     TELEGRAM_TOKEN: process.env.TELEGRAM_TOKEN,
     GEMINI_API_KEY: process.env.GEMINI_API_KEY,
-    ALPHA_KEY: process.env.ALPHA_KEY
+    TWELVE_KEY: process.env.TWELVE_KEY
 };
