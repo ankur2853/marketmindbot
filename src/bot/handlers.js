@@ -2,7 +2,7 @@ const bot = require('./instance');
 const { fetchIndianStock } = require('../api/yahoo');
 const { fetchUSStock, fetchForex } = require('../api/twelvedata');
 const { runEngine, formatResultForTelegram } = require('../services/tradingEngine');
-const { identifyAsset, agent1_TechnicalAnalyst, agent2_SentimentAnalyst, agent3_RiskManager, runMultiAgentAnalysis } = require('../services/gemini');
+const { identifyAsset, runMasterAnalyst } = require('../services/gemini');
 
 const esc = (str) => String(str ?? 'N/A')
     .replace(/&/g, '&amp;')
@@ -14,7 +14,7 @@ const sigEmoji = (s) => s === 'BUY' ? '🟢' : s === 'SELL' ? '🔴' : '⚪';
 bot.onText(/\/start/, (msg) => {
     bot.sendMessage(msg.chat.id,
         `👋 Welcome to <b>MarketMindBot Pro!</b> 🤖\n\n` +
-        `🧠 Powered by <b>3 Gemini AI Agents + 8-Gate Quant Engine</b>\n\n` +
+        `🧠 Powered by <b>1 Master Gemini AI Analyst + 8-Gate Quant Engine</b>\n\n` +
         `<b>Supports 3 asset types:</b>\n` +
         `🇮🇳 Indian Stocks (NSE/BSE)\n` +
         `🇺🇸 US Stocks (NASDAQ/NYSE)\n` +
@@ -22,9 +22,8 @@ bot.onText(/\/start/, (msg) => {
         `<b>How it works:</b>\n` +
         `⚙️ <b>8-Gate Quant Engine</b> — regime detection, probability scoring,\n` +
         `  price action gate, volume filter, ATR risk/reward\n` +
-        `📐 <b>Agent 1 – Technical Analyst</b> — indicators deep-dive\n` +
-        `🌐 <b>Agent 2 – Sentiment Analyst</b> — sector + macro context\n` +
-        `🛡️ <b>Agent 3 – Risk Manager</b> — final verdict\n\n` +
+        `🤖 <b>Master AI Analyst</b> — technicals + sector sentiment + risk management\n` +
+        `  all synthesised in one decisive, holistic trade call\n\n` +
         `<b>Just type anything:</b>\n` +
         `📊 <i>Stocks:</i>  Reliance  |  HDFCBANK  |  Apple  |  Tesla\n` +
         `💱 <i>Forex:</i>   EUR/USD  |  USD/INR  |  GBP/USD  |  Gold\n\n` +
@@ -96,16 +95,13 @@ bot.on('message', async (msg) => {
         };
 
         await bot.sendMessage(chatId,
-            `⚙️ Engine: ${engineResult.probability}% | Regime: ${engineResult.regime}\n🤖 Launching 3 AI agents in parallel...`,
+            `⚙️ Engine: ${engineResult.probability}% | Regime: ${engineResult.regime}\n🤖 Running Master AI Analyst...`,
             { parse_mode: 'HTML' });
 
-        const multiAgentResult = await runMultiAgentAnalysis(symbol, name, rawData, marketName, engineResult.indicators || {}, fakeConsensus);
-        const a1 = multiAgentResult.agent1;
-        const a2 = multiAgentResult.agent2;
-        const final = multiAgentResult.final;
+        const analyst = await runMasterAnalyst(symbol, name, rawData, marketName, engineResult.indicators || {}, fakeConsensus);
 
         const rr = engineResult.riskReward;
-        const finalEmoji = sigEmoji(final.signal);
+        const finalEmoji = sigEmoji(analyst.signal);
         const filled = Math.round((engineResult.probability || 0) / 10);
         const probBar = '█'.repeat(filled) + '░'.repeat(10 - filled);
 
@@ -121,21 +117,18 @@ bot.on('message', async (msg) => {
             `🕯️ Pattern: ${esc((engineResult.priceAction?.patternsFound || []).map(p => p.name).join(', ') || 'None detected')}\n` +
             `📦 Volume: ${esc(engineResult.volume?.ratio || 'N/A')}× of 5-day avg\n` +
             (rr ? `💱 Entry: ${esc(rr.entry)} | SL: ${esc(rr.stopLoss)} | TP: ${esc(rr.target)} | R:R 1:${esc(rr.riskReward)}\n` : '') +
-            `\n━━━━ 🤖 AGENT VOTES ━━━━\n` +
-            `📐 <b>Agent 1 – Technical:</b> ${sigEmoji(a1.signal)} ${esc(a1.signal)} (${esc(a1.confidence)})\n` +
-            `   └ ${esc(a1.reason)}\n` +
-            `🌐 <b>Agent 2 – Sentiment:</b> ${sigEmoji(a2.signal)} ${esc(a2.signal)} (${esc(a2.confidence)})\n` +
-            `   └ ${esc(a2.reason)}\n` +
-            `   📊 Sector: ${esc(a2.sectorOutlook)} | Mood: ${esc(a2.marketMood)}\n` +
-            `   ⚡ Key Risk: ${esc(a2.keyRisk)}\n\n` +
+
+            `\n━━━━ 🤖 MASTER ANALYST ━━━━\n` +
+            `📐 <b>Technicals:</b> ${esc(analyst.technicalSummary)}\n` +
+            `🌐 <b>Sector:</b> ${esc(analyst.sectorOutlook)} | Mood: ${esc(analyst.marketMood)}\n` +
+            `🏢 <b>Company:</b> ${esc(analyst.companyStrength)}\n` +
+            `⚡ <b>Key Risk:</b> ${esc(analyst.keyRisk)}\n\n` +
 
             `━━━━ 🛡️ FINAL VERDICT ━━━━\n` +
-            `${finalEmoji} <b>FINAL SIGNAL: ${esc(final.signal)}</b>\n` +
-            `🎯 Confidence: <b>${esc(final.confidence)}</b> | Agreement: ${esc(final.agreement)}\n` +
-            `⚠️ Risk: ${esc(final.riskLevel)} | ⏰ ${esc(final.timeframe)}\n` +
-            `🏹 Target: ${esc(final.target)} | 🛡️ SL: ${esc(final.stopLoss)}\n\n` +
-            `💡 <b>Final Reason:</b> ${esc(final.reason)}\n` +
-            (final.overrideNote && final.overrideNote !== 'None' ? `🔄 <i>Override: ${esc(final.overrideNote)}</i>\n` : '') +
+            `${finalEmoji} <b>SIGNAL: ${esc(analyst.signal)}</b>\n` +
+            `🎯 Confidence: <b>${esc(analyst.confidence)}</b> | Risk: ${esc(analyst.riskLevel)} | ⏰ ${esc(analyst.timeframe)}\n` +
+            `🏹 Target: ${esc(analyst.target)} | 🛡️ SL: ${esc(analyst.stopLoss)}\n\n` +
+            `💡 <b>Reason:</b> ${esc(analyst.reason)}\n` +
             `\n<i>⚠️ Disclaimer: AI + quant analysis only — not financial advice.</i>`,
             { parse_mode: 'HTML' }
         );
